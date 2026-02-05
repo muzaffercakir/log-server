@@ -1,0 +1,10 @@
+server:
+  port: ":3000"
+api_key: "kettas-secure-key-2026"
+internal_log:
+  log_file: "./server.log"
+kettas_log:
+  upload_dir: "./temp_uploads"
+  logs_dir: "./kettas-logs"
+  zip_password: "!tekniklog64"
+  max_file_size: 52428800 # 50MB
