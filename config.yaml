@@ -1,6 +1,6 @@
 server:
   port: ":3000"
-api_key: "kettas-secure-key-2026"
+api_key: "WdBWZnG7-93q9bgEIDJNCgyJROrqHdOgHN19_heY94w"
 internal_log:
   log_file: "./server.log"
 kettas_log:
