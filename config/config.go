@@ -9,9 +9,14 @@ import (
 
 type Config struct {
 	Server      ServerConfig      `mapstructure:"server"`
-	ApiKey      string            `mapstructure:"api_key"`
+	Auth        AuthConfig        `mapstructure:"auth"`
 	InternalLog InternalLogConfig `mapstructure:"internal_log"`
 	KettasLog   KettasLogConfig   `mapstructure:"kettas_log"`
+}
+
+type AuthConfig struct {
+	ApiKey   string `mapstructure:"api_key"`   // Header adı (ör: "inohom-api-key")
+	ApiValue string `mapstructure:"api_value"` // API secret değeri
 }
 
 type ServerConfig struct {
