@@ -1,14 +1,18 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"log-server/config"
+	"log-server/db"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -44,11 +48,12 @@ func Upload(c *fiber.Ctx) error {
 	if len(parts) < 2 {
 		slog.Warn("Invalid filename format", "filename", filename)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid filename format. Expected MAC_TIMESTAMP.zip",
+			"error": "Invalid filename format. Expected HOMEID_TIMESTAMP.zip",
 		})
 	}
-	mac := parts[0]
+	homeId := parts[0]
 
+	// Zip dosyasını geçici dizine kaydet
 	tempFilePath := filepath.Join(cfg.KettasLog.UploadDir, filename)
 	if err := c.SaveFile(file, tempFilePath); err != nil {
 		slog.Error("Failed to save file", "error", err.Error())
@@ -58,7 +63,8 @@ func Upload(c *fiber.Ctx) error {
 	}
 	defer os.Remove(tempFilePath)
 
-	targetDir := filepath.Join(cfg.KettasLog.LogsDir, mac)
+	// Hedef dizin oluştur (homeId bazlı)
+	targetDir := filepath.Join(cfg.KettasLog.LogsDir, homeId)
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		slog.Error("Failed to create target directory", "error", err.Error())
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -66,6 +72,7 @@ func Upload(c *fiber.Ctx) error {
 		})
 	}
 
+	// Zip'i aç
 	cmd := exec.Command("unzip", "-P", cfg.KettasLog.ZipPassword, "-o", tempFilePath, "-d", targetDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -76,9 +83,84 @@ func Upload(c *fiber.Ctx) error {
 		})
 	}
 
-	slog.Info("File processed successfully", "filename", filename, "mac", mac)
+	slog.Info("File processed successfully", "filename", filename, "home_id", homeId)
+
+	// JSON dosyalarını oku ve MongoDB'ye ekle (eğer aktifse)
+	var insertedCount int
+	var dbErr error
+
+	if cfg.DB.Enabled {
+		insertedCount, dbErr = processAndInsertLogs(targetDir, homeId)
+		if dbErr != nil {
+			slog.Error("MongoDB insert hatası", "error", dbErr, "home_id", homeId)
+			// Dosya kaydedildi ama DB insert başarısız - yine de 200 dönebiliriz
+			return c.Status(fiber.StatusOK).JSON(fiber.Map{
+				"message":  "File uploaded and extracted, but db insert failed",
+				"home_id":  homeId,
+				"db_error": dbErr.Error(),
+			})
+		}
+	} else {
+		slog.Info("MongoDB insert atlandı (devredışı)", "home_id", homeId)
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "File uploaded and extracted successfully",
-		"mac":     mac,
+		"message":        "File uploaded, extracted and processed",
+		"home_id":        homeId,
+		"inserted_count": insertedCount,
+		"db_enabled":     cfg.DB.Enabled,
 	})
+}
+
+// processAndInsertLogs hedef dizindeki JSON dosyalarını okur ve MongoDB'ye ekler
+func processAndInsertLogs(targetDir, homeId string) (int, error) {
+	files, err := os.ReadDir(targetDir)
+	if err != nil {
+		return 0, fmt.Errorf("dizin okunamadı: %v", err)
+	}
+
+	var allDocs []interface{}
+
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
+			continue
+		}
+
+		filePath := filepath.Join(targetDir, f.Name())
+		file, err := os.Open(filePath)
+		if err != nil {
+			slog.Warn("JSON dosyası açılamadı", "file", f.Name(), "error", err)
+			continue
+		}
+		defer file.Close()
+
+		decoder := json.NewDecoder(file)
+		for decoder.More() {
+			var logEntry map[string]interface{}
+			if err := decoder.Decode(&logEntry); err != nil {
+				slog.Warn("JSON decode hatası", "file", f.Name(), "error", err)
+				break // Hatalı kayıtta bu dosyayı geç, diğerine bak
+			}
+
+			// Her log kaydına db fields ekle
+			now := time.Now().UTC()
+			logEntry["db_server_received_at_utc"] = now
+			logEntry["db_server_received_at_timestamp"] = now.Unix()
+			allDocs = append(allDocs, logEntry)
+		}
+	}
+
+	if len(allDocs) == 0 {
+		slog.Info("Eklenecek log kaydı bulunamadı", "home_id", homeId)
+		return 0, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := db.InsertMany(ctx, allDocs); err != nil {
+		return 0, err
+	}
+
+	return len(allDocs), nil
 }

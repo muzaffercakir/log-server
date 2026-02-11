@@ -26,7 +26,21 @@ go.work.sum
 
 # env file
 .env
+*.yaml
 
 # Editor/IDE
 .idea/
 .vscode/
+
+# files
+.DS_Store
+
+# logs
+*.log
+
+# folders
+kettas-logs/
+temp_uploads/
+
+
+

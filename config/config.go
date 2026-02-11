@@ -10,8 +10,17 @@ import (
 type Config struct {
 	Server      ServerConfig      `mapstructure:"server"`
 	Auth        AuthConfig        `mapstructure:"auth"`
+	DB          DBConfig          `mapstructure:"db"`
 	InternalLog InternalLogConfig `mapstructure:"internal_log"`
 	KettasLog   KettasLogConfig   `mapstructure:"kettas_log"`
+}
+
+type DBConfig struct {
+	Enabled        bool   `mapstructure:"enabled"`
+	Username       string `mapstructure:"username"`
+	Password       string `mapstructure:"password"`
+	DBName         string `mapstructure:"db_name"`
+	CollectionName string `mapstructure:"collection_name"`
 }
 
 type AuthConfig struct {

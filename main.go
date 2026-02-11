@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"log-server/config"
+	"log-server/db"
 	"log-server/logger"
 	"log-server/router"
 
@@ -16,6 +17,17 @@ func main() {
 	logger.Init()
 
 	cfg := config.Get()
+
+	// MongoDB bağlantısı (eğer aktifse)
+	if cfg.DB.Enabled {
+		if err := db.Connect(); err != nil {
+			slog.Error("MongoDB bağlantısı başarısız", "error", err)
+			os.Exit(1)
+		}
+		defer db.Disconnect()
+	} else {
+		slog.Info("MongoDB bağlantısı atlandı (devredışı)")
+	}
 
 	app := fiber.New(fiber.Config{
 		BodyLimit: int(cfg.KettasLog.MaxFileSize + 1024*1024),

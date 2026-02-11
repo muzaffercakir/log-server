@@ -3,6 +3,12 @@ server:
 auth:
   api_key: "inohom-api-key"
   api_value: "WdBWZnG7-93q9bgEIDJNCgyJROrqHdOgHN19_heY94w"
+db:
+  enabled: true
+  username: "muzafferdev"
+  password: "muzafferdev2023*-"
+  db_name: "event_log_prod"
+  collection_name: "logs"
 internal_log:
   log_file: "./server.log"
 kettas_log:
