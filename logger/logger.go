@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"log-server/config"
 
@@ -14,6 +15,12 @@ var Log *slog.Logger
 
 func Init() {
 	cfg := config.Get()
+
+	dir := filepath.Dir(cfg.InternalLog.LogFile)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		// Log klasörü oluşturulamazsa stdout'a yazıp devam edelim veya panic
+		panic("Log dizini oluşturulamadı: " + err.Error())
+	}
 
 	logRotator := &lumberjack.Logger{
 		Filename:   cfg.InternalLog.LogFile,

@@ -37,10 +37,20 @@ type InternalLogConfig struct {
 }
 
 type KettasLogConfig struct {
-	UploadDir   string `mapstructure:"upload_dir"`
-	LogsDir     string `mapstructure:"logs_dir"`
-	ZipPassword string `mapstructure:"zip_password"`
-	MaxFileSize int64  `mapstructure:"max_file_size"`
+	UploadDir   string       `mapstructure:"upload_dir"`
+	LogsDir     string       `mapstructure:"logs_dir"`
+	ZipPassword string       `mapstructure:"zip_password"`
+	MaxFileSize int64        `mapstructure:"max_file_size"`
+	Backup      BackupConfig `mapstructure:"backup"`
+}
+
+type BackupConfig struct {
+	Enabled          bool   `mapstructure:"enabled"`
+	CheckIntervalMin int    `mapstructure:"check_interval_min"`
+	MaxFolderSizeMB  int64  `mapstructure:"max_folder_size_mb"`
+	BackupDir        string `mapstructure:"backup_dir"`
+	MaxBackupSizeMB  int64  `mapstructure:"max_backup_size_mb"`
+	RetentionDays    int    `mapstructure:"retention_days"`
 }
 
 var AppConfig Config

@@ -8,6 +8,7 @@ import (
 	"log-server/db"
 	"log-server/logger"
 	"log-server/router"
+	"log-server/worker"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -53,6 +54,11 @@ func main() {
 		slog.Error("Failed to create logs directory", "error", err)
 		os.Exit(1)
 	}
+
+	// Start Backup Manager
+	bm := worker.NewBackupManager()
+	bm.Start()
+	defer bm.Stop()
 
 	slog.Info("Server starting", "port", cfg.Server.Port)
 	if err := app.Listen(cfg.Server.Port); err != nil {
