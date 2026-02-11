@@ -1,14 +1,17 @@
 package main
 
 import (
+	"os/signal"
+	"syscall"
+
 	"log/slog"
 	"os"
 
+	"log-server/backup"
 	"log-server/config"
 	"log-server/db"
 	"log-server/logger"
 	"log-server/router"
-	"log-server/worker"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -31,7 +34,7 @@ func main() {
 	}
 
 	app := fiber.New(fiber.Config{
-		BodyLimit: int(cfg.KettasLog.MaxFileSize + 1024*1024),
+		BodyLimit: int(cfg.KettasLog.MaxFileSizeMB*1024*1024 + 1024*1024),
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			if e, ok := err.(*fiber.Error); ok {
@@ -56,13 +59,30 @@ func main() {
 	}
 
 	// Start Backup Manager
-	bm := worker.NewBackupManager()
+	bm := backup.NewBackupManager()
 	bm.Start()
-	defer bm.Stop()
 
-	slog.Info("Server starting", "port", cfg.Server.Port)
-	if err := app.Listen(cfg.Server.Port); err != nil {
-		slog.Error("Server failed to start", "error", err)
-		os.Exit(1)
+	// Graceful Shutdown Channel
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		slog.Info("Server starting", "port", cfg.Server.Port)
+		if err := app.Listen(cfg.Server.Port); err != nil {
+			slog.Error("Server error", "error", err)
+		}
+	}()
+
+	<-quit // Wait for signal
+	slog.Info("Shutting down server...")
+
+	// 1. Web sunucusunu durdur
+	if err := app.Shutdown(); err != nil {
+		slog.Error("Server forced to shutdown", "error", err)
 	}
+
+	// 2. Backup Manager'ı durdur (Varsa süren işlemi bekle)
+	bm.Stop()
+
+	slog.Info("Server exited")
 }

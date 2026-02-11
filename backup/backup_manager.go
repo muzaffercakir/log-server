@@ -1,4 +1,4 @@
-package worker
+package backup
 
 import (
 	"fmt"
@@ -27,6 +27,7 @@ func NewBackupManager() *BackupManager {
 }
 
 func (bm *BackupManager) Start() {
+	slog.Info("Backup manager starting")
 	cfg := config.Get()
 	if !cfg.KettasLog.Backup.Enabled {
 		slog.Info("Backup manager is disabled")
@@ -65,6 +66,7 @@ func (bm *BackupManager) Stop() {
 
 // checkAndRotate monitors logs folder size and rotates if needed
 func (bm *BackupManager) checkAndRotate() {
+	slog.Info("checkAndRotate")
 	cfg := config.Get()
 	logsDir := cfg.KettasLog.LogsDir
 
@@ -93,11 +95,14 @@ func (bm *BackupManager) rotateLogs(srcDir, destDir, password string) error {
 	}
 
 	timestamp := time.Now().Format("02_01_2006_15_04_05")
-	zipName := fmt.Sprintf("kettas_logs_%s.zip", timestamp)
+	zipName := fmt.Sprintf("backup_kettas_logs_%s.zip", timestamp)
 	zipPath := filepath.Join(destDir, zipName)
 
+	// Zip adından uzantıyı atıp root klasör adı olarak kullan (örn: backup_kettas_logs_11_02_2026_12_20_47)
+	zipRootFolder := strings.TrimSuffix(zipName, filepath.Ext(zipName))
+
 	// 1. Klasörü zip'le (Şifreli)
-	if err := zipDirectory(srcDir, zipPath, password); err != nil {
+	if err := zipDirectory(srcDir, zipPath, password, zipRootFolder); err != nil {
 		return fmt.Errorf("zipping failed: %w", err)
 	}
 	slog.Info("Logs rotated and zipped", "path", zipPath)
@@ -113,6 +118,7 @@ func (bm *BackupManager) rotateLogs(srcDir, destDir, password string) error {
 
 // cleanupBackups enforces retention policies on backup folder
 func (bm *BackupManager) cleanupBackups() {
+	slog.Info("cleanupBackups")
 	cfg := config.Get()
 	backupDir := cfg.KettasLog.Backup.BackupDir
 
@@ -194,7 +200,7 @@ func getDirSize(path string) (int64, error) {
 	return size, err
 }
 
-func zipDirectory(source, target, password string) error {
+func zipDirectory(source, target, password, rootFolder string) error {
 	zipfile, err := os.Create(target)
 	if err != nil {
 		return err
@@ -203,16 +209,6 @@ func zipDirectory(source, target, password string) error {
 
 	archive := yzip.NewWriter(zipfile)
 	defer archive.Close()
-
-	info, err := os.Stat(source)
-	if err != nil {
-		return nil
-	}
-
-	var baseDir string
-	if info.IsDir() {
-		baseDir = filepath.Base(source)
-	}
 
 	filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -224,9 +220,22 @@ func zipDirectory(source, target, password string) error {
 			return err
 		}
 
-		if baseDir != "" {
-			header.Name = filepath.Join(baseDir, strings.TrimPrefix(path, source))
+		// Use relative path for zip entry name
+		relPath, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
 		}
+
+		// Convert path separators to slash for zip compatibility
+		entryName := filepath.ToSlash(relPath)
+
+		// Skip the root folder entry itself (block directory creation with empty name or dot)
+		if entryName == "." || entryName == "" {
+			return nil
+		}
+
+		// Prepend the root folder name
+		header.Name = filepath.Join(rootFolder, entryName)
 
 		if info.IsDir() {
 			header.Name += "/"

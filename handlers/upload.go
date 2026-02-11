@@ -28,27 +28,59 @@ func Upload(c *fiber.Ctx) error {
 		})
 	}
 
-	if file.Size > cfg.KettasLog.MaxFileSize {
-		slog.Warn("File too large", "filename", file.Filename, "size", file.Size)
-		return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
-			"error": fmt.Sprintf("File size exceeds limit of %d MB", cfg.KettasLog.MaxFileSize/1024/1024),
-		})
+	// 1. Path Traversal Koruması
+	filename := filepath.Base(file.Filename)
+	if filename == "." || filename == "/" {
+		slog.Warn("Invalid filename", "filename", file.Filename)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid filename"})
 	}
 
-	ext := filepath.Ext(file.Filename)
-	if !strings.EqualFold(ext, ".zip") {
-		slog.Warn("Invalid file extension", "filename", file.Filename, "extension", ext)
+	// 2. Uzantı Kontrolü
+	if filepath.Ext(filename) != ".zip" {
+		slog.Warn("Invalid file type", "filename", filename)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Only .zip files are allowed",
+			"error": "Only zip files are allowed",
 		})
 	}
 
-	filename := file.Filename
-	parts := strings.Split(filename, "_")
+	// 3. Magic Bytes (Dosya İçeriği) Kontrolü
+	src, err := file.Open()
+	if err != nil {
+		slog.Error("Failed to open uploaded file", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "File processing failed"})
+	}
+	defer src.Close()
+
+	header := make([]byte, 4)
+	if _, err := src.Read(header); err != nil {
+		slog.Error("Failed to read file header", "error", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "File too short"})
+	}
+
+	// Zip Magic Bytes: PK\x03\x04 (50 4B 03 04)
+	if string(header) != "PK\x03\x04" {
+		slog.Warn("Invalid file content (not a zip)", "header", fmt.Sprintf("%x", header))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid file content"})
+	}
+
+	if file.Size > cfg.KettasLog.MaxFileSizeMB*1024*1024 {
+		slog.Warn("File too large", "filename", filename, "size", file.Size)
+		return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
+			"error": fmt.Sprintf("File size exceeds limit of %d MB", cfg.KettasLog.MaxFileSizeMB),
+		})
+	}
+
+	// Dosya adı formatı: HOMEID_TIMESTAMP.zip veya home_id_HOMEID_TIMESTAMP.zip
+	cleanFilename := filename
+	if strings.HasPrefix(cleanFilename, "home_id_") {
+		cleanFilename = strings.TrimPrefix(cleanFilename, "home_id_")
+	}
+
+	parts := strings.Split(cleanFilename, "_")
 	if len(parts) < 2 {
 		slog.Warn("Invalid filename format", "filename", filename)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid filename format. Expected HOMEID_TIMESTAMP.zip",
+			"error": "Invalid filename format. Expected HOMEID_TIMESTAMP.zip or home_id_HOMEID_TIMESTAMP.zip",
 		})
 	}
 	homeId := parts[0]
@@ -63,8 +95,9 @@ func Upload(c *fiber.Ctx) error {
 	}
 	defer os.Remove(tempFilePath)
 
-	// Hedef dizin oluştur (homeId bazlı)
-	targetDir := filepath.Join(cfg.KettasLog.LogsDir, homeId)
+	// Hedef dizin oluştur (homeId bazlı, örn: logs/home_id_UUID)
+	targetDirName := fmt.Sprintf("home_id_%s", homeId)
+	targetDir := filepath.Join(cfg.KettasLog.LogsDir, targetDirName)
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		slog.Error("Failed to create target directory", "error", err.Error())
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

@@ -40,7 +40,7 @@ type KettasLogConfig struct {
 	UploadDir   string       `mapstructure:"upload_dir"`
 	LogsDir     string       `mapstructure:"logs_dir"`
 	ZipPassword string       `mapstructure:"zip_password"`
-	MaxFileSize int64        `mapstructure:"max_file_size"`
+	MaxFileSizeMB int64        `mapstructure:"max_file_size_mb"`
 	Backup      BackupConfig `mapstructure:"backup"`
 }
 
