@@ -25,7 +25,7 @@ go.work
 go.work.sum
 
 # env file
-.env
+*.env
 *.yaml
 
 # Editor/IDE
@@ -39,7 +39,7 @@ go.work.sum
 *.log
 
 # folders
-kettas-logs/
+kettas_logs/
 temp_uploads/
 
 
