@@ -68,7 +68,7 @@ func main() {
 
 	go func() {
 		slog.Info("Server starting", "port", cfg.Server.Port)
-		if err := app.Listen(cfg.Server.Port); err != nil {
+		if err := app.Listen(":" + cfg.Server.Port); err != nil {
 			slog.Error("Server error", "error", err)
 		}
 	}()
