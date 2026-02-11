@@ -71,10 +71,7 @@ func Upload(c *fiber.Ctx) error {
 	}
 
 	// Dosya adı formatı: HOMEID_TIMESTAMP.zip veya home_id_HOMEID_TIMESTAMP.zip
-	cleanFilename := filename
-	if strings.HasPrefix(cleanFilename, "home_id_") {
-		cleanFilename = strings.TrimPrefix(cleanFilename, "home_id_")
-	}
+	cleanFilename := strings.TrimPrefix(filename, "home_id_")
 
 	parts := strings.Split(cleanFilename, "_")
 	if len(parts) < 2 {
