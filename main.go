@@ -62,7 +62,11 @@ func main() {
 	bm := backup.NewBackupManager()
 	bm.Start()
 
-	// Graceful Shutdown Channel
+	// Start Daily Log Archiver (her gün belirlenen saatte çalışır)
+	dc := backup.NewDailyLogArchiver()
+	dc.Start()
+
+	// Graceful Shutdown Chan
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
@@ -76,13 +80,16 @@ func main() {
 	<-quit // Wait for signal
 	slog.Info("Shutting down server...")
 
-	// 1. Web sunucusunu durdur
+	// 2. Web sunucusunu durdur
 	if err := app.Shutdown(); err != nil {
 		slog.Error("Server forced to shutdown", "error", err)
 	}
 
 	// 2. Backup Manager'ı durdur (Varsa süren işlemi bekle)
 	bm.Stop()
+
+	// 3. Daily Log Archiver'ı durdur
+	dc.Stop()
 
 	slog.Info("Server exited")
 }

@@ -14,15 +14,15 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const (
-	mongoHost      = "cluster0.xp8w8mf.mongodb.net"
-)
-
 var (
 	client     *mongo.Client
 	once       sync.Once
 	collection *mongo.Collection
 )
+
+// const (
+// 	mongoHost      = "cluster0.xp8w8mf.mongodb.net"
+// )
 
 // Connect MongoDB'ye bağlanır (singleton)
 func Connect() error {
@@ -30,10 +30,22 @@ func Connect() error {
 	once.Do(func() {
 		cfg := config.Get()
 
-		// URI oluştur
-		encodedPass := url.QueryEscape(cfg.DB.Password)
-		uri := fmt.Sprintf("mongodb+srv://%s:%s@%s/?appName=Cluster0",
-			cfg.DB.Username, encodedPass, mongoHost)
+		// URI oluştur (is_cloud durumuna göre)
+		var uri string
+		if cfg.DB.IsCloud {
+			// Cloud (Atlas): mongodb+srv://user:pass@host/?appName=Cluster0
+			encodedPass := url.QueryEscape(cfg.DB.Password)
+			uri = fmt.Sprintf("mongodb+srv://%s:%s@%s/?appName=Cluster0",
+				cfg.DB.Username, encodedPass, cfg.DB.Host)
+		} else if cfg.DB.Username != "" && cfg.DB.Password != "" {
+			// Local (auth'lu): mongodb://user:pass@host
+			encodedPass := url.QueryEscape(cfg.DB.Password)
+			uri = fmt.Sprintf("mongodb://%s:%s@%s",
+				cfg.DB.Username, encodedPass, cfg.DB.Host)
+		} else {
+			// Lokal (auth'suz): mongodb://host
+			uri = fmt.Sprintf("mongodb://%s", cfg.DB.Host)
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -50,7 +62,6 @@ func Connect() error {
 			connErr = fmt.Errorf("MongoDB ping hatası: %v", err)
 			return
 		}
-
 
 		client = c
 		collection = client.Database(cfg.DB.DBName).Collection(cfg.DB.CollectionName)
